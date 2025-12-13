@@ -1,0 +1,1021 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>オセロ（COCO-SSD + TensorFlow.js）</title>
+    <style>
+      :root {
+        --blue: #007bff;
+        --bg: #0b1220;
+        --panel: #121a2b;
+        --text: #e8eefc;
+        --muted: #a9b7d0;
+        --danger: #ff4d4f;
+        --ok: #2ecc71;
+        --gold: #f5c542;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans JP", "Hiragino Kaku Gothic ProN",
+          "Yu Gothic", sans-serif;
+        background: radial-gradient(1200px 800px at 30% 20%, rgba(0, 123, 255, 0.15), transparent 60%),
+          radial-gradient(900px 700px at 70% 80%, rgba(46, 204, 113, 0.1), transparent 55%), var(--bg);
+        color: var(--text);
+      }
+
+      header {
+        padding: 18px 16px 10px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        background: linear-gradient(180deg, rgba(18, 26, 43, 0.85), rgba(18, 26, 43, 0.3));
+        position: sticky;
+        top: 0;
+        backdrop-filter: blur(8px);
+        z-index: 5;
+      }
+
+      .wrap {
+        max-width: 1100px;
+        margin: 0 auto;
+      }
+
+      .title {
+        display: flex;
+        gap: 12px;
+        align-items: baseline;
+        flex-wrap: wrap;
+      }
+
+      h1 {
+        font-size: 18px;
+        margin: 0;
+        letter-spacing: 0.02em;
+      }
+
+      .sub {
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      main {
+        padding: 16px;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: 520px 1fr;
+        gap: 16px;
+      }
+
+      @media (max-width: 980px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .card {
+        background: rgba(18, 26, 43, 0.85);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 16px;
+        padding: 14px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+      }
+
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .row + .row {
+        margin-top: 10px;
+      }
+
+      button,
+      select,
+      input[type="checkbox"] + label {
+        font: inherit;
+      }
+
+      button {
+        appearance: none;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(0, 123, 255, 0.18);
+        color: var(--text);
+        padding: 10px 12px;
+        border-radius: 12px;
+        cursor: pointer;
+        transition: transform 120ms ease, background 120ms ease, border-color 120ms ease;
+      }
+
+      button:hover {
+        transform: translateY(-1px);
+        border-color: rgba(0, 123, 255, 0.45);
+        background: rgba(0, 123, 255, 0.26);
+      }
+
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.5;
+        transform: none;
+      }
+
+      select {
+        border-radius: 12px;
+        padding: 10px 12px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(255, 255, 255, 0.06);
+        color: var(--text);
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(255, 255, 255, 0.05);
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .pill strong {
+        color: var(--text);
+      }
+
+      .pill.ok {
+        border-color: rgba(46, 204, 113, 0.35);
+      }
+
+      .pill.bad {
+        border-color: rgba(255, 77, 79, 0.4);
+        color: rgba(255, 77, 79, 0.95);
+      }
+
+      .board {
+        width: 100%;
+        aspect-ratio: 1 / 1;
+        border-radius: 18px;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(0, 0, 0, 0.25);
+        position: relative;
+      }
+
+      canvas {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+
+      .hint {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.6;
+      }
+
+      .status {
+        font-size: 13px;
+        color: var(--muted);
+      }
+
+      .status b {
+        color: var(--text);
+      }
+
+      .danger {
+        color: rgba(255, 77, 79, 0.95);
+      }
+
+      .cam {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 10px;
+      }
+
+      .videoWrap {
+        position: relative;
+        width: 100%;
+        border-radius: 16px;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(0, 0, 0, 0.25);
+      }
+
+      video {
+        width: 100%;
+        height: auto;
+        display: block;
+        transform: scaleX(-1); /* 鏡表示：手の移動方向を直感的に */
+      }
+
+      .overlay {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+
+      .dot {
+        position: absolute;
+        width: 14px;
+        height: 14px;
+        border-radius: 999px;
+        background: rgba(0, 123, 255, 0.95);
+        box-shadow: 0 0 0 4px rgba(0, 123, 255, 0.25), 0 10px 24px rgba(0, 0, 0, 0.35);
+        transform: translate(-50%, -50%);
+        display: none;
+      }
+
+      .dot.on {
+        display: block;
+      }
+
+      .dwell {
+        position: absolute;
+        height: 4px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.15);
+        left: 12px;
+        right: 12px;
+        bottom: 10px;
+        overflow: hidden;
+      }
+
+      .dwell > div {
+        height: 100%;
+        width: 0%;
+        background: linear-gradient(90deg, var(--blue), rgba(46, 204, 113, 0.9));
+        transition: width 80ms linear;
+      }
+
+      .small {
+        font-size: 12px;
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="wrap">
+        <div class="title">
+          <h1>オセロ（人間 vs CPU）</h1>
+          <div class="sub">COCO-SSD + TensorFlow.js（HandPose併用で手位置）</div>
+        </div>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <div class="grid">
+        <section class="card">
+          <div class="row">
+            <button id="btnReset">リセット</button>
+            <button id="btnCpuMove">CPUに手番を渡す</button>
+            <select id="cpuLevel" title="CPU強さ">
+              <option value="easy">CPU: かんたん</option>
+              <option value="normal" selected>CPU: ふつう</option>
+              <option value="hard">CPU: むずかしい</option>
+            </select>
+            <span class="pill" id="turnPill"><strong>手番</strong>: -</span>
+            <span class="pill ok" id="modelPill"><strong>モデル</strong>: 未読込</span>
+          </div>
+
+          <div class="board">
+            <canvas id="board" width="640" height="640"></canvas>
+          </div>
+
+          <div class="row">
+            <span class="pill" id="scorePill"><strong>黒</strong>: 2 / <strong>白</strong>: 2</span>
+            <span class="pill" id="modePill"><strong>入力</strong>: クリック</span>
+          </div>
+
+          <p class="hint">
+            操作:
+            <br />- クリック: 合法手に置く（緑の点が候補）
+            <br />- カメラ: 指先カーソルを合法手セルに一定時間「滞在」すると確定
+            <br />※ COCO-SSDは起動確認/周辺検出用、手の精密座標はHandPoseを使用（COCOに手クラスが無いため）
+          </p>
+          <div class="status" id="status">準備中...</div>
+        </section>
+
+        <aside class="card cam">
+          <div class="row">
+            <button id="btnLoadModels">モデル読込</button>
+            <button id="btnStartCam" disabled>カメラ開始</button>
+            <button id="btnStopCam" disabled>カメラ停止</button>
+          </div>
+          <div class="row">
+            <input id="camMode" type="checkbox" />
+            <label for="camMode">カメラで着手（滞在確定）</label>
+            <span class="pill" id="fpsPill"><strong>推論</strong>: -</span>
+          </div>
+
+          <div class="videoWrap">
+            <video id="video" playsinline muted></video>
+            <div class="overlay" id="overlay">
+              <div class="dot" id="dot"></div>
+              <div class="dwell"><div id="dwellBar"></div></div>
+            </div>
+          </div>
+
+          <div class="small">
+            ヒント: カメラ権限が出ない場合は、ローカルサーバで開いてください（例: <code>python3 -m http.server 5173</code>）。
+          </div>
+        </aside>
+      </div>
+    </main>
+
+    <!-- 依存はCDNから（npm不要）。ネットが無い環境だとモデル読込は失敗します。 -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/handpose@0.0.7/dist/handpose.min.js"></script>
+
+    <script>
+      // 日本語コメント必須: ここからゲーム本体
+      // 方針:
+      // - 盤面は8x8、黒=1 / 白=-1 / 空=0
+      // - 人間は黒固定、CPUは白固定（必要なら後で切替）
+      // - 入力は「クリック」か「カメラ滞在」で確定
+      // - カメラは鏡表示（video側）なので、座標変換に注意する
+
+      const SIZE = 8;
+      const CELL = 80; // canvas 640px / 8
+      const HUMAN = 1; // 黒
+      const CPU = -1; // 白
+
+      const canvas = document.getElementById("board");
+      const ctx = canvas.getContext("2d");
+
+      const el = {
+        btnReset: document.getElementById("btnReset"),
+        btnCpuMove: document.getElementById("btnCpuMove"),
+        cpuLevel: document.getElementById("cpuLevel"),
+        turnPill: document.getElementById("turnPill"),
+        scorePill: document.getElementById("scorePill"),
+        modePill: document.getElementById("modePill"),
+        status: document.getElementById("status"),
+        modelPill: document.getElementById("modelPill"),
+        fpsPill: document.getElementById("fpsPill"),
+        btnLoadModels: document.getElementById("btnLoadModels"),
+        btnStartCam: document.getElementById("btnStartCam"),
+        btnStopCam: document.getElementById("btnStopCam"),
+        camMode: document.getElementById("camMode"),
+        video: document.getElementById("video"),
+        overlay: document.getElementById("overlay"),
+        dot: document.getElementById("dot"),
+        dwellBar: document.getElementById("dwellBar"),
+      };
+
+      function cloneBoard(board) {
+        return board.map((row) => row.slice());
+      }
+
+      function newGame() {
+        const b = Array.from({ length: SIZE }, () => Array.from({ length: SIZE }, () => 0));
+        // 初期配置
+        b[3][3] = CPU;
+        b[3][4] = HUMAN;
+        b[4][3] = HUMAN;
+        b[4][4] = CPU;
+        return b;
+      }
+
+      const DIRS = [
+        [-1, -1],
+        [-1, 0],
+        [-1, 1],
+        [0, -1],
+        [0, 1],
+        [1, -1],
+        [1, 0],
+        [1, 1],
+      ];
+
+      function inBounds(r, c) {
+        return r >= 0 && r < SIZE && c >= 0 && c < SIZE;
+      }
+
+      function getFlips(board, player, r, c) {
+        // その手で裏返る座標の配列を返す（合法手でないなら空配列）
+        if (!inBounds(r, c) || board[r][c] !== 0) return [];
+        const opp = -player;
+        const flips = [];
+
+        for (const [dr, dc] of DIRS) {
+          let rr = r + dr;
+          let cc = c + dc;
+          const line = [];
+          while (inBounds(rr, cc) && board[rr][cc] === opp) {
+            line.push([rr, cc]);
+            rr += dr;
+            cc += dc;
+          }
+          if (line.length > 0 && inBounds(rr, cc) && board[rr][cc] === player) {
+            flips.push(...line);
+          }
+        }
+        return flips;
+      }
+
+      function getValidMoves(board, player) {
+        const moves = [];
+        for (let r = 0; r < SIZE; r++) {
+          for (let c = 0; c < SIZE; c++) {
+            const flips = getFlips(board, player, r, c);
+            if (flips.length > 0) moves.push({ r, c, flips });
+          }
+        }
+        return moves;
+      }
+
+      function applyMove(board, player, move) {
+        const b = cloneBoard(board);
+        b[move.r][move.c] = player;
+        for (const [rr, cc] of move.flips) b[rr][cc] = player;
+        return b;
+      }
+
+      function countPieces(board) {
+        let black = 0;
+        let white = 0;
+        for (let r = 0; r < SIZE; r++) {
+          for (let c = 0; c < SIZE; c++) {
+            if (board[r][c] === HUMAN) black++;
+            else if (board[r][c] === CPU) white++;
+          }
+        }
+        return { black, white };
+      }
+
+      function gameOver(board) {
+        // 両者が打てないなら終了
+        return getValidMoves(board, HUMAN).length === 0 && getValidMoves(board, CPU).length === 0;
+      }
+
+      // 描画
+      function draw(board, validMoves, hoverCell) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // 盤面
+        ctx.fillStyle = "rgba(0, 123, 255, 0.12)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // グリッド
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.12)";
+        ctx.lineWidth = 2;
+        for (let i = 0; i <= SIZE; i++) {
+          ctx.beginPath();
+          ctx.moveTo(i * CELL, 0);
+          ctx.lineTo(i * CELL, SIZE * CELL);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(0, i * CELL);
+          ctx.lineTo(SIZE * CELL, i * CELL);
+          ctx.stroke();
+        }
+
+        // 合法手の候補（小さな点）
+        for (const m of validMoves) {
+          ctx.fillStyle = "rgba(46, 204, 113, 0.95)";
+          ctx.beginPath();
+          ctx.arc(m.c * CELL + CELL / 2, m.r * CELL + CELL / 2, 6, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // ホバー（カメラ滞在中/マウス上）を枠表示
+        if (hoverCell && inBounds(hoverCell.r, hoverCell.c)) {
+          ctx.strokeStyle = "rgba(245, 197, 66, 0.9)";
+          ctx.lineWidth = 4;
+          ctx.strokeRect(hoverCell.c * CELL + 4, hoverCell.r * CELL + 4, CELL - 8, CELL - 8);
+        }
+
+        // 石
+        for (let r = 0; r < SIZE; r++) {
+          for (let c = 0; c < SIZE; c++) {
+            if (board[r][c] === 0) continue;
+            const isBlack = board[r][c] === HUMAN;
+            const x = c * CELL + CELL / 2;
+            const y = r * CELL + CELL / 2;
+
+            // 影
+            ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
+            ctx.beginPath();
+            ctx.arc(x + 3, y + 4, 30, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 本体
+            const g = ctx.createRadialGradient(x - 10, y - 12, 10, x, y, 36);
+            if (isBlack) {
+              g.addColorStop(0, "rgba(80, 90, 110, 0.9)");
+              g.addColorStop(1, "rgba(10, 12, 18, 0.98)");
+            } else {
+              g.addColorStop(0, "rgba(255, 255, 255, 0.98)");
+              g.addColorStop(1, "rgba(210, 225, 255, 0.9)");
+            }
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.arc(x, y, 30, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      }
+
+      // UI表示
+      function setStatus(text, isError = false) {
+        el.status.textContent = text;
+        el.status.classList.toggle("danger", isError);
+      }
+
+      function setTurnPill(turn) {
+        const name = turn === HUMAN ? "黒（あなた）" : "白（CPU）";
+        el.turnPill.innerHTML = `<strong>手番</strong>: ${name}`;
+      }
+
+      function setScorePill(board) {
+        const { black, white } = countPieces(board);
+        el.scorePill.innerHTML = `<strong>黒</strong>: ${black} / <strong>白</strong>: ${white}`;
+      }
+
+      function setModelPill(ok, text) {
+        el.modelPill.classList.toggle("ok", ok);
+        el.modelPill.classList.toggle("bad", !ok);
+        el.modelPill.innerHTML = `<strong>モデル</strong>: ${text}`;
+      }
+
+      // ゲーム状態
+      let board = newGame();
+      let turn = HUMAN;
+      let validMoves = getValidMoves(board, turn);
+      let hoverCell = null;
+
+      // カメラ入力状態（滞在=確定）
+      const dwell = {
+        active: false,
+        cellKey: "",
+        startedAt: 0,
+        ms: 900, // 滞在時間
+      };
+
+      function updateValidMoves() {
+        validMoves = getValidMoves(board, turn);
+      }
+
+      function findMoveByCell(r, c) {
+        return validMoves.find((m) => m.r === r && m.c === c) || null;
+      }
+
+      function tryPlaceAt(r, c) {
+        const move = findMoveByCell(r, c);
+        if (!move) return false;
+
+        board = applyMove(board, turn, move);
+        // 次手番へ（パスも処理）
+        turn = -turn;
+        updateValidMoves();
+        if (validMoves.length === 0 && !gameOver(board)) {
+          // パス
+          turn = -turn;
+          updateValidMoves();
+        }
+        render();
+        maybeAnnounceEnd();
+        return true;
+      }
+
+      function maybeAnnounceEnd() {
+        if (!gameOver(board)) return;
+        const { black, white } = countPieces(board);
+        if (black > white) setStatus(`終了：あなたの勝ち（黒 ${black} / 白 ${white}）`);
+        else if (white > black) setStatus(`終了：CPUの勝ち（黒 ${black} / 白 ${white}）`);
+        else setStatus(`終了：引き分け（黒 ${black} / 白 ${white}）`);
+      }
+
+      function render() {
+        setTurnPill(turn);
+        setScorePill(board);
+        updateValidMoves();
+        draw(board, validMoves, hoverCell);
+
+        if (gameOver(board)) return;
+
+        if (turn === HUMAN) {
+          setStatus(validMoves.length > 0 ? "あなたの手番です。" : "あなたは打てません（パス）。");
+        } else {
+          setStatus(validMoves.length > 0 ? "CPUの手番です。" : "CPUは打てません（パス）。");
+        }
+      }
+
+      // クリック操作
+      canvas.addEventListener("click", (ev) => {
+        if (el.camMode.checked) return; // カメラ入力中はクリックを抑制（誤操作防止）
+        if (turn !== HUMAN) return;
+        if (gameOver(board)) return;
+
+        const rect = canvas.getBoundingClientRect();
+        const x = ((ev.clientX - rect.left) / rect.width) * canvas.width;
+        const y = ((ev.clientY - rect.top) / rect.height) * canvas.height;
+        const c = Math.floor(x / CELL);
+        const r = Math.floor(y / CELL);
+        if (tryPlaceAt(r, c)) {
+          // クリック成功ならCPUを自動で動かす（テンポ重視）
+          window.setTimeout(() => maybeCpuAutoMove(), 50);
+        }
+      });
+
+      canvas.addEventListener("mousemove", (ev) => {
+        if (el.camMode.checked) return;
+        const rect = canvas.getBoundingClientRect();
+        const x = ((ev.clientX - rect.left) / rect.width) * canvas.width;
+        const y = ((ev.clientY - rect.top) / rect.height) * canvas.height;
+        hoverCell = { r: Math.floor(y / CELL), c: Math.floor(x / CELL) };
+        draw(board, validMoves, hoverCell);
+      });
+
+      canvas.addEventListener("mouseleave", () => {
+        hoverCell = null;
+        draw(board, validMoves, hoverCell);
+      });
+
+      // CPU（実装は後段で注入）
+      function maybeCpuAutoMove() {
+        if (turn !== CPU) return;
+        if (gameOver(board)) return;
+        const move = chooseCpuMove(board, CPU, el.cpuLevel.value);
+        if (!move) {
+          // 打てない -> パス
+          turn = HUMAN;
+          updateValidMoves();
+          render();
+          return;
+        }
+        board = applyMove(board, CPU, move);
+        turn = HUMAN;
+        updateValidMoves();
+        // 人間が打てない場合は自動パス（ゲームルール準拠）
+        if (validMoves.length === 0 && !gameOver(board)) {
+          turn = CPU;
+          updateValidMoves();
+          render();
+          setStatus("あなたは打てないのでパス。CPUが続けます。");
+          window.setTimeout(() => maybeCpuAutoMove(), 220);
+          return;
+        }
+        render();
+      }
+
+      el.btnReset.addEventListener("click", () => {
+        board = newGame();
+        turn = HUMAN;
+        hoverCell = null;
+        dwell.active = false;
+        el.dwellBar.style.width = "0%";
+        render();
+      });
+
+      el.btnCpuMove.addEventListener("click", () => {
+        if (gameOver(board)) return;
+        if (turn !== CPU) {
+          setStatus("今はCPUの手番ではありません。", true);
+          window.setTimeout(() => render(), 700);
+          return;
+        }
+        maybeCpuAutoMove();
+      });
+
+      el.camMode.addEventListener("change", () => {
+        el.modePill.innerHTML = `<strong>入力</strong>: ${el.camMode.checked ? "カメラ" : "クリック"}`;
+        dwell.active = false;
+        el.dwellBar.style.width = "0%";
+      });
+
+      // --- ここから推論（COCO-SSD + HandPose） ---
+      let cocoModel = null;
+      let handModel = null;
+      let camStream = null;
+      let loopTimer = null;
+      let lastInferAt = 0;
+      let lastFpsAt = 0;
+      let inferCount = 0;
+
+      function now() {
+        return performance.now();
+      }
+
+      async function loadModels() {
+        try {
+          setStatus("モデルを読み込み中...");
+          setModelPill(false, "読込中...");
+          el.btnLoadModels.disabled = true;
+
+          // 重要: tfjs backendを明示（ブラウザ環境により自動でも良いが、失敗時の原因切り分けがしやすい）
+          // ここでは最初にWebGLを試し、ダメならCPUへフォールバックする。
+          try {
+            await tf.setBackend("webgl");
+          } catch {
+            // 例外が出ても続行（最終的にtf.ready()で確定）
+          }
+          await tf.ready();
+
+          // COCO-SSD（要求条件）
+          cocoModel = await cocoSsd.load();
+
+          // HandPose（手位置の実用精度を担保）
+          handModel = await handpose.load();
+
+          setModelPill(true, "OK");
+          setStatus("モデル読込完了。カメラを開始できます。");
+          el.btnStartCam.disabled = false;
+        } catch (e) {
+          console.error(e);
+          setModelPill(false, "失敗");
+          setStatus("モデル読込に失敗しました（ネット/ブラウザ設定を確認）。", true);
+        } finally {
+          el.btnLoadModels.disabled = false;
+        }
+      }
+
+      async function startCamera() {
+        if (!cocoModel || !handModel) {
+          setStatus("先に「モデル読込」を押してください。", true);
+          return;
+        }
+        try {
+          setStatus("カメラ起動中...");
+          el.btnStartCam.disabled = true;
+
+          camStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+            audio: false,
+          });
+          el.video.srcObject = camStream;
+          await el.video.play();
+
+          el.btnStopCam.disabled = false;
+          setStatus("カメラ起動。カメラ入力をONにすると滞在で着手します。");
+          runInferLoop();
+        } catch (e) {
+          console.error(e);
+          setStatus("カメラ起動に失敗しました（権限/HTTPS/ローカルサーバを確認）。", true);
+          el.btnStartCam.disabled = false;
+        }
+      }
+
+      function stopCamera() {
+        if (loopTimer) {
+          cancelAnimationFrame(loopTimer);
+          loopTimer = null;
+        }
+        if (camStream) {
+          for (const t of camStream.getTracks()) t.stop();
+          camStream = null;
+        }
+        el.video.pause();
+        el.video.srcObject = null;
+        el.btnStartCam.disabled = false;
+        el.btnStopCam.disabled = true;
+        el.dot.classList.remove("on");
+        el.dwellBar.style.width = "0%";
+        setStatus("カメラ停止。");
+      }
+
+      el.btnLoadModels.addEventListener("click", loadModels);
+      el.btnStartCam.addEventListener("click", startCamera);
+      el.btnStopCam.addEventListener("click", stopCamera);
+
+      function setFpsPill(fps) {
+        el.fpsPill.innerHTML = `<strong>推論</strong>: ${fps.toFixed(1)} fps`;
+      }
+
+      function videoToOverlayPoint(x, y) {
+        // video座標(ピクセル) -> overlay座標(%) に変換
+        // 注意: videoは鏡表示(ScaleX -1)しているので、xは反転させる
+        const vw = el.video.videoWidth || 1;
+        const vh = el.video.videoHeight || 1;
+        const nx = 1 - x / vw; // 鏡反転
+        const ny = y / vh;
+        return { px: nx * 100, py: ny * 100, nx, ny };
+      }
+
+      function overlayPointToBoardCell(nx, ny) {
+        // overlayの正規化座標(0..1) -> canvasセル
+        // boardはvideoとは独立したUIなので、単純にboard上の相対位置にマッピングする
+        const rect = canvas.getBoundingClientRect();
+        const bx = nx * rect.width;
+        const by = ny * rect.height;
+        const c = Math.floor((bx / rect.width) * SIZE);
+        const r = Math.floor((by / rect.height) * SIZE);
+        return { r, c };
+      }
+
+      function updateDwell(targetCell, okToPlace) {
+        // 滞在バー更新。合法手セルで一定時間止まったら着手する。
+        if (!el.camMode.checked || turn !== HUMAN || gameOver(board)) {
+          dwell.active = false;
+          el.dwellBar.style.width = "0%";
+          return;
+        }
+        if (!okToPlace) {
+          dwell.active = false;
+          dwell.cellKey = "";
+          el.dwellBar.style.width = "0%";
+          return;
+        }
+
+        const key = `${targetCell.r},${targetCell.c}`;
+        const t = now();
+        if (!dwell.active || dwell.cellKey !== key) {
+          dwell.active = true;
+          dwell.cellKey = key;
+          dwell.startedAt = t;
+          el.dwellBar.style.width = "0%";
+          return;
+        }
+        const p = Math.min(1, (t - dwell.startedAt) / dwell.ms);
+        el.dwellBar.style.width = `${Math.round(p * 100)}%`;
+        if (p >= 1) {
+          dwell.active = false;
+          el.dwellBar.style.width = "0%";
+          if (tryPlaceAt(targetCell.r, targetCell.c)) {
+            window.setTimeout(() => maybeCpuAutoMove(), 80);
+          }
+        }
+      }
+
+      async function inferOnce() {
+        const t0 = now();
+        const video = el.video;
+        if (!video || video.readyState < 2) return;
+
+        // COCO-SSD（存在確認/環境検出）
+        // ここでは「人」が検出できるかを見て、検出ゼロなら状態表示を弱く警告する。
+        // ※ 手の精密推定はHandPoseが担当
+        let cocoOk = true;
+        try {
+          const preds = await cocoModel.detect(video);
+          const hasPerson = preds.some((p) => p.class === "person" && p.score >= 0.4);
+          cocoOk = hasPerson || preds.length > 0;
+        } catch {
+          cocoOk = false;
+        }
+
+        // HandPose（指先）
+        let finger = null;
+        try {
+          // CSSで鏡表示しているだけで入力ピクセル自体は反転していないため、ここではflipしない
+          const hands = await handModel.estimateHands(video, false);
+          // 複数手は一番スコアが高そうなものを採用（handposeはscoreが無いので、最初の手）
+          if (hands && hands.length > 0) {
+            const hand = hands[0];
+            // 8: indexFingerTip
+            const tip = hand.landmarks[8];
+            finger = { x: tip[0], y: tip[1] };
+          }
+        } catch {
+          finger = null;
+        }
+
+        // UI更新
+        if (!cocoOk) {
+          // ここは致命的ではない（COCOが不調でもHandPoseが動けば遊べる）ので、軽い警告に留める
+          el.modelPill.innerHTML = `<strong>モデル</strong>: OK（COCO注意）`;
+          el.modelPill.classList.add("bad");
+        } else {
+          el.modelPill.innerHTML = `<strong>モデル</strong>: OK`;
+          el.modelPill.classList.remove("bad");
+          el.modelPill.classList.add("ok");
+        }
+
+        if (finger) {
+          const p = videoToOverlayPoint(finger.x, finger.y);
+          el.dot.style.left = `${p.px}%`;
+          el.dot.style.top = `${p.py}%`;
+          el.dot.classList.add("on");
+
+          const cell = overlayPointToBoardCell(p.nx, p.ny);
+          hoverCell = cell;
+          const ok = !!findMoveByCell(cell.r, cell.c);
+          draw(board, validMoves, hoverCell);
+          updateDwell(cell, ok);
+        } else {
+          el.dot.classList.remove("on");
+          hoverCell = null;
+          draw(board, validMoves, hoverCell);
+          updateDwell({ r: -1, c: -1 }, false);
+        }
+
+        // fps計測
+        inferCount++;
+        const t1 = now();
+        const dt = t1 - t0;
+        // 推論時間を表示（軽量な目安）
+        const fps = dt > 0 ? 1000 / dt : 0;
+        const tNow = now();
+        if (tNow - lastFpsAt > 800) {
+          setFpsPill(fps);
+          lastFpsAt = tNow;
+          inferCount = 0;
+        }
+      }
+
+      function runInferLoop() {
+        // 端末負荷を避けるため、推論は間引きする（目標: 12~20fps程度）
+        const targetIntervalMs = 60;
+        const tick = async () => {
+          const t = now();
+          if (t - lastInferAt >= targetIntervalMs) {
+            lastInferAt = t;
+            await inferOnce();
+          }
+          loopTimer = requestAnimationFrame(tick);
+        };
+        if (!loopTimer) loopTimer = requestAnimationFrame(tick);
+      }
+
+      // 初期描画
+      render();
+      setModelPill(false, "未読込");
+
+      // --- CPU思考（後で下に定義） ---
+      // ミニマックス用の評価テーブル（角を重視、危険マスを嫌う）
+      const W = [
+        [120, -20, 20, 5, 5, 20, -20, 120],
+        [-20, -40, -5, -5, -5, -5, -40, -20],
+        [20, -5, 15, 3, 3, 15, -5, 20],
+        [5, -5, 3, 3, 3, 3, -5, 5],
+        [5, -5, 3, 3, 3, 3, -5, 5],
+        [20, -5, 15, 3, 3, 15, -5, 20],
+        [-20, -40, -5, -5, -5, -5, -40, -20],
+        [120, -20, 20, 5, 5, 20, -20, 120],
+      ];
+
+      function evaluate(boardForEval, player) {
+        // player視点の評価値（高いほど良い）
+        let s = 0;
+        for (let r = 0; r < SIZE; r++) {
+          for (let c = 0; c < SIZE; c++) {
+            const v = boardForEval[r][c];
+            if (v === 0) continue;
+            s += v * W[r][c];
+          }
+        }
+        // 石数も少し加味（終盤寄り）
+        const { black, white } = countPieces(boardForEval);
+        const diff = black - white; // 黒視点
+        s += diff * 2;
+        return s * player; // player視点に正規化
+      }
+
+      function minimax(board0, player, depth, alpha, beta) {
+        // 返り値: {score, move}
+        if (depth <= 0 || gameOver(board0)) {
+          return { score: evaluate(board0, player), move: null };
+        }
+        const moves = getValidMoves(board0, player);
+        if (moves.length === 0) {
+          // パス（相手の手番へ）
+          const r = minimax(board0, -player, depth - 1, -beta, -alpha);
+          return { score: -r.score, move: null };
+        }
+
+        let bestMove = null;
+        let bestScore = -Infinity;
+        for (const m of moves) {
+          const b1 = applyMove(board0, player, m);
+          const r = minimax(b1, -player, depth - 1, -beta, -alpha);
+          const score = -r.score; // ネガマックス
+          if (score > bestScore) {
+            bestScore = score;
+            bestMove = m;
+          }
+          alpha = Math.max(alpha, score);
+          if (alpha >= beta) break; // 枝刈り
+        }
+        return { score: bestScore, move: bestMove };
+      }
+
+      function chooseCpuMove(boardNow, cpuPlayer, level) {
+        const moves = getValidMoves(boardNow, cpuPlayer);
+        if (moves.length === 0) return null;
+
+        // かんたん: すぐ裏返る枚数が最大の手
+        if (level === "easy") {
+          return moves.reduce((a, b) => (b.flips.length > a.flips.length ? b : a), moves[0]);
+        }
+
+        // ふつう/むずかしい: ミニマックス浅探索
+        const depth = level === "hard" ? 4 : 3;
+        const r = minimax(boardNow, cpuPlayer, depth, -Infinity, Infinity);
+        return r.move || moves[0];
+      }
+
+      // 初期状態でCPUが先手にならないように固定（仕様）
+      // もし将来「先手/後手」を選ぶなら、ここをUI化する。
+    </script>
+  </body>
+</html>
